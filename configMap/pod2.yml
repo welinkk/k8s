@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+ name: dapi-test-pod2
+spec:
+ containers:
+ - name: test-config2
+   image: nginx
+   command: ["/bin/bash","-c","sleep 600s"]
+   volumeMounts:
+    - name: config-volumes
+      mountPath: /etc/config
+ volumes:
+  - name: config-volumes
+    configMap:
+      name: special-config
+ restartPolicy: Never
