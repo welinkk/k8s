@@ -1,0 +1,199 @@
+iapiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: APPNAME-ing 
+  namespace: pred
+  labels:
+    ing: APPNAME-ing
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: DOMAIN.allhome.com.cn
+    http:
+      paths:
+      - backend:
+          serviceName: APPNAME-svc 
+          servicePort: CONPORT
+  tls:
+  - secretName: allhome-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: APPNAME-svc
+  namespace: pred
+  labels:
+    svc: APPNAME-svc
+spec:
+  clusterIP: None
+  ports:
+  - name: http
+    port: CONPORT
+    targetPort: 9007
+    protocol: TCP
+  selector:
+    app: APPNAME
+  type: ClusterIP
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: APPNAME-api-ing 
+  namespace: pred
+  labels:
+    ing: APPNAME-api-ing
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: derpapinew.allhome.com.cn
+    http:
+      paths:
+      - backend:
+          serviceName: APPNAME-api-svc 
+          servicePort: 9008
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: APPNAME-api-svc
+  namespace: pred
+  labels:
+    svc: APPNAME-api-svc
+spec:
+  clusterIP: None
+  ports:
+  - name: api
+    port: 9008
+    targetPort: 9008
+    protocol: TCP
+  selector:
+    app: APPNAME
+  type: ClusterIP
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: APPNAME
+  namespace: pred
+  labels:
+    deploy: APPNAME
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: APPNAME
+  template:
+    metadata:
+      name: APPNAME
+      namespace: pred
+      labels:
+        app: APPNAME
+    spec:
+      imagePullSecrets: 
+      - name: regsecret
+      containers:
+      - name: APPNAME
+        image: registry-vpc.cn-beijing.aliyuncs.com/NAMESPACE/APPNAME:TAG
+        imagePullPolicy: Always
+        env:
+        - name: APP_ENV
+          value: pred
+        ports:
+        - name: http
+          containerPort: 9007
+        - name: api
+          containerPort: 9008
+        readinessProbe:             
+          successThreshold: 1
+          failureThreshold: 3
+          tcpSocket:
+            port: 9007
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:              
+          failureThreshold: 3       
+          successThreshold: 1       
+          tcpSocket:
+            port: 9007            
+          initialDelaySeconds: 40
+          periodSeconds: 10         
+          timeoutSeconds: 5         
+        resources:
+          requests:
+            memory: "384Mi"
+          limits:   
+            memory: "1024Mi"
+        volumeMounts:
+        - name: hyperf-log
+          mountPath: /opt/www/runtime/logs
+      - name: filebeat
+        image: registry.cn-beijing.aliyuncs.com/qianjia_public/filebeat:6.5.4
+        securityContext:
+          runAsUser: 0
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            memory: 50Mi
+        volumeMounts:              
+        - name: hyperf-log
+          mountPath: /opt/www/runtime/logs
+        - name: config
+          mountPath: /usr/share/filebeat/filebeat.yml
+          subPath: filebeat.yml
+          readOnly: true  
+      volumes:
+      - name: hyperf-log
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: filebeat-config 
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: pred
+  labels:
+    k8s-app: filebeat
+data:
+  filebeat.yml: |-
+    filebeat.inputs:
+    - type: log
+      enabled: true
+      paths:
+        - "/opt/www/runtime/logs/*/*.log"
+      fields:
+        app_id: "hyperf-logs"
+ 
+    json:
+      json.keys_under_root: true
+      json.add_error_key: true
+      json.message_key: log
+
+    output.redis:
+      hosts: ["172.17.3.102:6379"]
+      password: "qj123@password"
+      db: 5
+      key: "erp-new-pred"
+      keys:
+        - key: "%{[fields.list]}"
+          mappings:
+            app_id: "hyperf-logs"
+      worker: 2
+      timeout: 5
+      max_retries: 3
+      codec.json:
+        pretty: false
+
+
+
+
